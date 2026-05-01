@@ -1,0 +1,37 @@
+# Dependency directories (Không đẩy thư viện lên vì rất nặng)
+node_modules/
+jspm_packages/
+
+# Environment variables (CỰC KỲ QUAN TRỌNG: Giấu các Secret Key, DB URL, API Key)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs (Các file ghi nhật ký lỗi)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# Operating System Files (Các file rác của hệ điều hành)
+.DS_Store
+Thumbs.db
+
+# IDE/Editor folders (Cấu hình riêng của máy bạn)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build output (Các file sau khi biên dịch để deploy lên Vercel)
+dist/
+build/
+.next/
+out/
+
+# Database (Nếu bạn dùng database file cục bộ như SQLite)
+*.db
+*.sqlite
