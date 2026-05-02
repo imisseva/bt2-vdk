@@ -110,10 +110,17 @@ export default function Home() {
         <div className="flex-1 bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-2xl flex flex-col items-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 to-orange-400"></div>
           <Sun className="w-8 h-8 text-yellow-400 mb-2 opacity-80" />
-          <h2 className="text-sm text-neutral-400 mb-2">Cảm biến LDR</h2>
-          <div className="text-3xl font-bold tracking-tighter text-white drop-shadow-md">
-            {ldrValue}
+          <h2 className="text-sm text-neutral-400 mb-2">Cảm biến Môi trường</h2>
+          <div className="text-xl md:text-2xl text-center font-bold tracking-tight text-white drop-shadow-md">
+            {(() => {
+              const val = parseInt(ldrValue, 10);
+              if (isNaN(val)) return ldrValue;
+              if (val > 2500) return "☀️ Trời Sáng chói (Đóng rèm)";
+              if (val < 1000) return "🌙 Trời Tối mát (Mở rèm)";
+              return "⛅ Ánh sáng vừa phải";
+            })()}
           </div>
+          <div className="text-xs text-neutral-500 mt-2">Chỉ số LDR gốc: {ldrValue}</div>
         </div>
 
         {/* Cụm Cài Đặt & Nút Bấm */}

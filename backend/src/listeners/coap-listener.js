@@ -35,7 +35,11 @@ const listen = (io) => { // Nhận đối tượng io từ app.js
         else if (path === '/command') {
             const cmd = state.getCommand();
             if (cmd) {
-                console.log(`[CoAP Server] Trả lệnh cho ESP: ${cmd}`);
+                if (cmd === 'auto' || cmd === 'manual') {
+                    console.log(`[CoAP Server] Đã điều hướng ESP sang chế độ: ${cmd.toUpperCase()}`);
+                } else {
+                    console.log(`[CoAP Server] Trả lệnh thao tác rèm cho ESP: ${cmd.toUpperCase()}`);
+                }
                 res.end(cmd);
             } else {
                 res.end('none');
