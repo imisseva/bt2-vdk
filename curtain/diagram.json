@@ -1,0 +1,47 @@
+
+{
+  "version": 1,
+  "author": "Phong Nguyễn",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-breadboard-half", "id": "bb1", "top": 6.6, "left": -323.6, "attrs": {} },
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -134.4, "left": 148.84, "attrs": {} },
+    {
+      "type": "wokwi-stepper-motor",
+      "id": "stepper1",
+      "top": -169.19,
+      "left": 317.23,
+      "attrs": { "size": "17" }
+    },
+    { "type": "wokwi-a4988", "id": "drv1", "top": 283.2, "left": 110.4, "attrs": {} },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": -92.8,
+      "left": -239.2,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:5V", "drv1:VMOT", "red", [ "h-86.25", "v19.2" ] ],
+    [ "drv1:GND.2", "esp:GND.2", "black", [ "h0" ] ],
+    [ "drv1:GND.1", "esp:GND.1", "black", [ "v-134.32", "h86.55" ] ],
+    [ "esp:13", "drv1:DIR", "green", [ "h-134.25", "v124.8" ] ],
+    [ "esp:12", "drv1:STEP", "green", [ "v134.4", "h-134.25" ] ],
+    [ "stepper1:A-", "drv1:1A", "green", [ "v144", "h-211.2" ] ],
+    [ "stepper1:A+", "drv1:2A", "green", [ "v134.4", "h-220.8" ] ],
+    [ "stepper1:B+", "drv1:1B", "green", [ "v153.6", "h-230.4" ] ],
+    [ "stepper1:B-", "drv1:2B", "green", [ "v124.8", "h-240.01" ] ],
+    [ "esp:3V3", "bb1:tp.25", "green", [ "h-172.65", "v124.8" ] ],
+    [ "drv1:VDD", "bb1:tp.24", "green", [ "h-191.85", "v-326.32" ] ],
+    [ "ldr1:VCC", "bb1:tp.23", "red", [ "h-28.8", "v9.6" ] ],
+    [ "esp:GND.3", "ldr1:GND", "black", [ "h-316.8", "v-19.2" ] ],
+    [ "ldr1:AO", "esp:VP", "green", [ "h48", "v-0.7" ] ],
+    [ "drv1:SLEEP", "drv1:RESET", "blue", [ "v-9.6", "h9.6" ] ],
+    [ "drv1:ENABLE", "esp:GND.3", "black", [ "v0" ] ],
+    [ "drv1:VDD", "esp:3V3", "red", [ "h0" ] ]
+  ],
+  "dependencies": {}
+}

@@ -5,9 +5,10 @@ const sendControlCommand = (targetIp, command) => {
         // Cấu hình yêu cầu gửi tới ESP8266
         const req = coap.request({
             host: targetIp,
-            method: 'POST',
+            method: 'GET',
             pathname: `/${command}`, // Ví dụ: /open hoặc /close
-            confirmable: true        // Đảm bảo tin nhắn được xác nhận (CON)
+            confirmable: true,       // Đảm bảo tin nhắn được xác nhận (CON)
+            token: Buffer.alloc(0)   // Bắt buộc Token rỗng để thư viện ESP không bị tràn bộ nhớ
         });
 
         req.on('response', (res) => {

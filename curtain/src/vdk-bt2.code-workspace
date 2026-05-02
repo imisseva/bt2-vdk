@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"name": "esp",
+			"path": "C:/Users/ADMIN/Documents/PlatformIO/Projects/esp"
+		},
+		{
+			"name": "curtain",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
