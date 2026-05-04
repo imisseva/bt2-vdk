@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
 // Đổi địa chỉ này thành IP máy tính bạn
-const socket = io("http://192.168.2.126:3001"); 
+const socket = io("http://localhost:3001"); 
 
 export default function PetFeeder() {
   const [foodLevel, setFoodLevel] = useState(0);
@@ -37,7 +37,7 @@ export default function PetFeeder() {
     setStatus("⏳ Đang nhả thức ăn, vui lòng đợi...");
     
     try {
-      await fetch("http://192.168.2.126:3001/api/feeder/control", {
+      await fetch("http://localhost:3001/api/feeder/control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "feed" }),

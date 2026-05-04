@@ -3,9 +3,9 @@
 #include <coap-simple.h>
 
 // 1. Cấu hình WiFi
-const char* ssid     = "ADMIN-PC 6954";
-const char* password = "886!e1R1";
-IPAddress backendIP(192, 168, 2, 126); 
+const char* ssid     = "HIEU";
+const char* password = "12345678";
+IPAddress backendIP(192, 168, 137, 1); 
 
 WiFiUDP udp;
 Coap coap(udp);
@@ -99,12 +99,19 @@ void loop() {
     coap.loop();
     
     static unsigned long lastSensor = 0;
-    if (millis() - lastSensor > 5000) {
+    if (millis() - lastSensor > 2000) { // Giảm xuống 2 giây để test cho nhanh
         lastSensor = millis();
         long dist = getDistance();
+        
+        Serial.print(">> Khoảng cách đo được: ");
+        Serial.print(dist);
+        Serial.println(" cm");
+
         if (dist > 0 && dist < 400) {
             String dStr = String(dist);
             coap.put(backendIP, 5683, "sensor", dStr.c_str());
+        } else {
+            Serial.println("!! Cảnh báo: Khoảng cách không hợp lệ (kiểm tra dây Echo/Trig)");
         }
     }
 

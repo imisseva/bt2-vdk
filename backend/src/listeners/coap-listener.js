@@ -11,15 +11,13 @@ const listen = (io) => {
         if (path === 'sensor') { // Nhận dữ liệu khoảng cách từ cảm biến siêu âm
             req.on('data', (chunk) => {
                 const distance = parseInt(chunk.toString());
-                // Giả sử thùng cao 20cm, tính % thức ăn
-                // (Bạn có thể tự chỉnh lại maxLevel nếu thùng của bạn cao hơn/thấp hơn)
                 const maxLevel = 20; 
                 let percent = Math.round(((maxLevel - distance) / maxLevel) * 100);
-                percent = Math.max(0, Math.min(100, percent)); // Giới hạn 0-100%
+                percent = Math.max(0, Math.min(100, percent)); 
 
                 state.setFoodLevel(percent);
                 if (io) io.emit('food_level', percent);
-                console.log(`[CoAP] Lượng thức ăn còn lại: ${percent}%`);
+                console.log(`[CoAP] Nhận dữ liệu Sensor: ${distance}cm -> ${percent}%`);
             });
             res.end('ACK');
         } 
@@ -29,13 +27,14 @@ const listen = (io) => {
         } 
         else if (path === 'status') {
             req.on('data', (chunk) => {
-                const status = chunk.toString(); // 'fed' hoặc 'error'
+                const status = chunk.toString(); 
                 if (io) io.emit('feed_status', status);
                 console.log(`[CoAP] Trạng thái thiết bị: ${status}`);
             });
             res.end('ACK');
         }
         else {
+            console.log(`[CoAP] Nhận yêu cầu lạ tới đường dẫn: /${path}`);
             res.end('Unknown Path');
         }
     });
