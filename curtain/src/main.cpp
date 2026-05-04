@@ -1,152 +1,116 @@
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <coap-simple.h>
 
-// 1. Cấu hình WiFi ảo của Wokwi
-const char* ssid     = "Wokwi-GUEST";
-const char* password = "";
-
-// 2. IP của Backend Node.js (máy tính thật của bạn)
-IPAddress backendIP(172, 20, 10, 11); 
+// 1. Cấu hình WiFi
+const char* ssid     = "ADMIN-PC 6954";
+const char* password = "886!e1R1";
+IPAddress backendIP(192, 168, 2, 126); 
 
 WiFiUDP udp;
 Coap coap(udp);
 
-// --- Cấu hình chân ESP32 theo Diagram của bạn ---
-#define DIR_PIN 13
-#define STEP_PIN 12
-#define LDR_PIN 36 // Chân VP trên ESP32
+// 2. Chân kết nối cho ULN2003 (Động cơ 28BYJ-48)
+#define IN1 5  // D1
+#define IN2 4  // D2
+#define IN3 0  // D3
+#define IN4 2  // D4
 
-// Biến lưu trạng thái rèm hiện tại
-bool isCurtainOpen = false;
-bool isAutoMode = true; // Lưu trạng thái chế độ Tự Động / Thủ Công
+// Chân Siêu âm
+#define TRIG_PIN 14 // D5
+#define ECHO_PIN 12 // D6
 
-// Hàm điều khiển Stepper Motor (A4988)
-void rotateCurtain(bool openCurtain) {
-  // Kiểm tra trạng thái để tránh mở khi đã mở, đóng khi đã đóng
-  if (openCurtain && isCurtainOpen) {
-    Serial.println(">> Rèm đã được MỞ sẵn, bỏ qua lệnh!");
-    return;
-  }
-  if (!openCurtain && !isCurtainOpen) {
-    Serial.println(">> Rèm đã được ĐÓNG sẵn, bỏ qua lệnh!");
-    return;
-  }
+// Ma trận bước (Half-step 8 bước để quay mượt hơn)
+int steps[8][4] = {
+  {1,0,0,0}, {1,1,0,0}, {0,1,0,0}, {0,1,1,0},
+  {0,0,1,0}, {0,0,1,1}, {0,0,0,1}, {1,0,0,1}
+};
 
-  int steps = 1000; // Số bước mô phỏng để rèm kéo ra/vào (có thể tăng giảm)
-  
-  if (openCurtain) {
-    digitalWrite(DIR_PIN, HIGH); // Chiều mở rèm
-    Serial.println(">> Đang MỞ rèm (Motor đang quay ra)...");
-  } else {
-    digitalWrite(DIR_PIN, LOW); // Chiều đóng rèm
-    Serial.println(">> Đang ĐÓNG rèm (Motor đang quay vào)...");
-  }
-
-  // Phát xung cho Stepper quay
-  for (int i = 0; i < steps; i++) {
-    digitalWrite(STEP_PIN, HIGH);
-    delayMicroseconds(1000); // Tốc độ quay (càng nhỏ càng nhanh)
-    digitalWrite(STEP_PIN, LOW);
-    delayMicroseconds(1000);
-  }
-  
-  // Cập nhật trạng thái
-  isCurtainOpen = openCurtain;
-  Serial.println(">> Hoàn thành kéo rèm! Báo cáo lên Backend...");
-  
-  // Gửi trạng thái về Backend
-  String statusPayload = openCurtain ? "open" : "close";
-  coap.put(backendIP, 5683, "status", statusPayload.c_str());
+void writeStep(int s1, int s2, int s3, int s4) {
+  digitalWrite(IN1, s1); digitalWrite(IN2, s2);
+  digitalWrite(IN3, s3); digitalWrite(IN4, s4);
 }
 
-// --- Hàm xử lý khi Node.js trả lời câu hỏi của ESP ---
+// Hàm xoay cửa (open=true: mở, open=false: đóng)
+void rotateGate(bool open) {
+    // 28BYJ-48 cần ~4096 bước cho 1 vòng 360 độ.
+    // Xoay 90 độ cần ~1024 bước (tương đương 128 lần lặp của chu kỳ 8 bước)
+    for (int i = 0; i < 128; i++) {
+        for (int j = 0; j < 8; j++) {
+            int stepIdx = open ? j : (7 - j);
+            writeStep(steps[stepIdx][0], steps[stepIdx][1], steps[stepIdx][2], steps[stepIdx][3]);
+            delayMicroseconds(1000); // Tốc độ quay
+        }
+        yield();
+    }
+    // Sau khi quay xong phải ngắt điện các cuộn dây để tránh nóng driver/động cơ
+    writeStep(0, 0, 0, 0);
+}
+
+void processFeeding() {
+    Serial.println(">> Đang mở cửa nhả hạt...");
+    rotateGate(true);
+    
+    delay(2000); // Đợi 2 giây cho hạt rơi
+    
+    Serial.println(">> Đang đóng cửa...");
+    rotateGate(false);
+    
+    Serial.println(">> Hoàn thành!");
+    coap.put(backendIP, 5683, "status", "fed");
+}
+
 void callback_response(CoapPacket &packet, IPAddress ip, int port) {
-  char p[packet.payloadlen + 1];
-  memcpy(p, packet.payload, packet.payloadlen);
-  p[packet.payloadlen] = '\0';
-  String response = String(p);
+    char p[packet.payloadlen + 1];
+    memcpy(p, packet.payload, packet.payloadlen);
+    p[packet.payloadlen] = '\0';
+    String cmd = String(p);
 
-  // Nếu Backend trả lời là "none" (không có ai bấm nút)
-  if (response == "none") return;
+    if (cmd == "feed") {
+        processFeeding();
+    }
+}
 
-  // Nếu có lệnh thực sự
-  if (response == "open") {
-    isAutoMode = false; // Bấm nút tay là ép về chế độ Manual luôn
-    rotateCurtain(true);
-  } 
-  else if (response == "close") {
-    isAutoMode = false; // Bấm nút tay là ép về chế độ Manual luôn
-    rotateCurtain(false);
-  }
-  else if (response == "auto") {
-    isAutoMode = true;
-    Serial.println(">> Đã chuyển sang chế độ AUTO");
-  }
-  else if (response == "manual") {
-    isAutoMode = false;
-    Serial.println(">> Đã chuyển sang chế độ MANUAL");
-  }
+long getDistance() {
+    digitalWrite(TRIG_PIN, LOW); delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+    long duration = pulseIn(ECHO_PIN, HIGH);
+    return duration * 0.034 / 2;
 }
 
 void setup() {
-  Serial.begin(115200);
-  
-  // Khởi tạo chân Motor
-  pinMode(DIR_PIN, OUTPUT);
-  pinMode(STEP_PIN, OUTPUT);
-  digitalWrite(DIR_PIN, LOW); 
-  digitalWrite(STEP_PIN, LOW);
+    Serial.begin(115200);
+    
+    pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
+    pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
+    pinMode(TRIG_PIN, OUTPUT); pinMode(ECHO_PIN, INPUT);
 
-  // Kết nối WiFi
-  WiFi.begin(ssid, password);
-  Serial.println();
-  Serial.print("Dang ket noi WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nDa ket noi WiFi!");
-  Serial.print("IP ao cua ESP32: ");
-  Serial.println(WiFi.localIP());
+    WiFi.begin(ssid, password);
+    Serial.print("\nConnecting WiFi");
+    while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+    Serial.println("\nWiFi Connected!");
 
-  // Đăng ký hàm nhận phản hồi
-  coap.response(callback_response);
-  coap.start();
-  
-  Serial.println("ESP32 san sang hoat dong (Polling Mode)!");
+    coap.response(callback_response);
+    coap.start();
 }
 
 void loop() {
-  coap.loop();
-
-  // 1. LUỒNG SENSOR: Đọc giá trị Analog thật từ LDR và gửi mỗi 2 giây (để test nhanh hơn)
-  static unsigned long lastSensorTime = 0;
-  if (millis() - lastSensorTime > 2000) {
-    lastSensorTime = millis();
+    coap.loop();
     
-    int ldrVal = analogRead(LDR_PIN); // Đọc độ sáng thực tế trong giả lập
-    String payload = "Gia tri LDR: " + String(ldrVal);
-    
-    Serial.println("<< Gui du lieu: " + payload);
-    coap.put(backendIP, 5683, "sensor", payload.c_str()); 
-
-    // --- LOGIC AUTO: Đóng/Mở theo ánh sáng ---
-    if (isAutoMode) {
-      if (ldrVal > 2500 && isCurtainOpen) {
-        Serial.println(">> [AUTO] Trời sáng chói, tự động ĐÓNG rèm!");
-        rotateCurtain(false); 
-      } else if (ldrVal < 1000 && !isCurtainOpen) {
-        Serial.println(">> [AUTO] Trời tối, tự động MỞ rèm!");
-        rotateCurtain(true); 
-      }
+    static unsigned long lastSensor = 0;
+    if (millis() - lastSensor > 5000) {
+        lastSensor = millis();
+        long dist = getDistance();
+        if (dist > 0 && dist < 400) {
+            String dStr = String(dist);
+            coap.put(backendIP, 5683, "sensor", dStr.c_str());
+        }
     }
-  }
 
-  // 2. LUỒNG LẤY LỆNH (POLLING): Hỏi lệnh mỗi 1 giây
-  static unsigned long lastCmdTime = 0;
-  if (millis() - lastCmdTime > 1000) {
-    lastCmdTime = millis();
-    coap.get(backendIP, 5683, "command"); 
-  }
+    static unsigned long lastCmd = 0;
+    if (millis() - lastCmd > 1000) {
+        lastCmd = millis();
+        coap.get(backendIP, 5683, "command");
+    }
 }

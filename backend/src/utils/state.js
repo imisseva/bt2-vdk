@@ -1,10 +1,14 @@
 let pendingCommand = null;
+let lastFoodLevel = 100;
 
-module.exports = {
-    setCommand: (cmd) => { pendingCommand = cmd; },
-    getCommand: () => { 
-        const cmd = pendingCommand;
-        pendingCommand = null; // Tự động xóa sau khi ESP đã lấy lệnh
-        return cmd;
-    }
+const setCommand = (cmd) => { pendingCommand = cmd; };
+const getCommand = () => {
+    const cmd = pendingCommand;
+    pendingCommand = null; // Xóa lệnh sau khi lấy
+    return cmd;
 };
+
+const setFoodLevel = (level) => { lastFoodLevel = level; };
+const getFoodLevel = () => lastFoodLevel;
+
+module.exports = { setCommand, getCommand, setFoodLevel, getFoodLevel };

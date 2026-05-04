@@ -1,177 +1,119 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
-import { Sun, Maximize2, Minimize2, Loader2, Cloud, ToggleLeft, ToggleRight } from "lucide-react";
 
-export default function Home() {
-  const [ldrValue, setLdrValue] = useState<string>("Đang chờ dữ liệu...");
-  const [loading, setLoading] = useState<string | null>(null);
-  const [curtainState, setCurtainState] = useState<"open" | "close">("close");
-  const [isAuto, setIsAuto] = useState<boolean>(true); // Trạng thái nút gạt
+// Đổi địa chỉ này thành IP máy tính bạn
+const socket = io("http://192.168.2.126:3001"); 
 
-  const toggleMode = async () => {
-    const newMode = !isAuto;
-    setIsAuto(newMode);
-    try {
-      await fetch("http://localhost:3001/api/curtain/control", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: newMode ? "auto" : "manual" }),
-      });
-    } catch (error) {
-      alert("Không thể kết nối tới máy chủ!");
-      setIsAuto(!newMode); // Hoàn tác nếu lỗi
-    }
-  };
+export default function PetFeeder() {
+  const [foodLevel, setFoodLevel] = useState(0);
+  const [status, setStatus] = useState("Sẵn sàng đợi lệnh...");
+  const [loading, setLoading] = useState(false);
 
-  // Kết nối tới Backend cổng 3001
   useEffect(() => {
-    const socket = io("http://localhost:3001");
-
-    socket.on("sensor_data", (data) => {
-      // data có dạng "Gia tri LDR: 750"
-      const numberValue = data.replace(/[^\d]/g, ""); 
-      setLdrValue(numberValue || data);
+    // Lắng nghe lượng thức ăn thay đổi (0 - 100%)
+    socket.on("food_level", (data) => {
+      setFoodLevel(data);
     });
 
-    socket.on("curtain_status", (status) => {
-      // status: "open" hoặc "close"
-      if (status === "open" || status === "close") {
-        setCurtainState(status);
-        setLoading(null); // Tắt loading khi phần cứng báo đã chạy xong
+    // Lắng nghe trạng thái khi thiết bị phản hồi
+    socket.on("feed_status", (data) => {
+      if (data === "fed") {
+        setStatus("✔️ Đã cho ăn thành công!");
+        setLoading(false);
+        // Sau 3 giây đưa về trạng thái sẵn sàng
+        setTimeout(() => setStatus("Sẵn sàng đợi lệnh..."), 3000);
       }
     });
 
-    return () => {
-      socket.disconnect();
+    return () => { 
+      socket.off("food_level"); 
+      socket.off("feed_status"); 
     };
   }, []);
 
-  const controlCurtain = async (action: "open" | "close") => {
-    setLoading(action);
-    setIsAuto(false); // Bấm mở/đóng thủ công thì tự gạt công tắc sang Manual
-    // Lưu ý: Không setCurtainState(action) ở đây nữa, chờ phần cứng báo về qua Socket!
+  const handleFeed = async () => {
+    setLoading(true);
+    setStatus("⏳ Đang nhả thức ăn, vui lòng đợi...");
+    
     try {
-      const res = await fetch("http://localhost:3001/api/curtain/control", {
+      await fetch("http://192.168.2.126:3001/api/feeder/control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action: "feed" }),
       });
-      const data = await res.json();
-      console.log(data);
     } catch (error) {
-      alert("Không thể kết nối tới máy chủ!");
-      setLoading(null); // Tắt loading nếu lỗi mạng
+      console.error("Lỗi khi gọi API:", error);
+      setStatus("❌ Lỗi mạng, không thể gửi lệnh.");
+      setLoading(false);
     }
-    // Đã xóa finally setTimeout, để nút bấm tiếp tục xoay cho đến khi phần cứng báo xong
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-4 font-sans text-white bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-neutral-950 to-black">
-      
-      {/* Tiêu đề */}
-      <div className="text-center mb-8">
-        <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-500 mb-2">
-          Smart Curtain
+    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
+      <div className="text-center mb-10">
+        <h1 className="text-5xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-rose-400">
+          Smart Pet Feeder 🐾
         </h1>
-        <p className="text-neutral-400">Điều khiển rèm thông minh IoT</p>
+        <p className="text-slate-400">Điều khiển và giám sát thức ăn từ xa</p>
       </div>
+      
+      <div className="bg-slate-800 p-8 rounded-3xl shadow-2xl shadow-orange-900/20 w-full max-w-md text-center border border-slate-700 relative overflow-hidden">
+        {/* Background glow */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1/2 bg-orange-500/10 blur-3xl rounded-full pointer-events-none"></div>
 
-      {/* Hiệu ứng Rèm Cửa Animation */}
-      <div className="w-full max-w-md h-56 md:h-64 mb-8 relative overflow-hidden rounded-3xl border-8 border-neutral-800 shadow-[0_0_40px_rgba(0,0,0,0.5)] bg-sky-300">
-        {/* Cảnh vật ngoài cửa sổ */}
-        <div className="absolute inset-0 bg-gradient-to-b from-sky-400 to-sky-200">
-           <div className="absolute top-6 right-10 w-16 h-16 bg-yellow-300 rounded-full shadow-[0_0_40px_rgba(253,224,71,1)]"></div>
-           <Cloud className="absolute top-12 left-8 w-20 h-10 text-white/80" fill="currentColor" />
-           <Cloud className="absolute top-24 right-20 w-16 h-8 text-white/60" fill="currentColor" />
-        </div>
-
-        {/* Thanh treo rèm */}
-        <div className="absolute top-0 left-0 w-full h-3 bg-neutral-900 z-20 shadow-md"></div>
-
-        {/* Rèm trái */}
-        <div 
-          className={`absolute top-0 left-0 h-full w-1/2 bg-neutral-200 z-10 shadow-[5px_0_15px_rgba(0,0,0,0.3)] transition-all duration-1000 ease-in-out origin-left flex ${curtainState === 'open' ? '-translate-x-[85%] scale-x-50' : 'translate-x-0'}`}
-          style={{ backgroundImage: 'repeating-linear-gradient(90deg, #e5e5e5 0px, #d4d4d4 10px, #e5e5e5 20px)' }}
-        >
-        </div>
-
-        {/* Rèm phải */}
-        <div 
-          className={`absolute top-0 right-0 h-full w-1/2 bg-neutral-200 z-10 shadow-[-5px_0_15px_rgba(0,0,0,0.3)] transition-all duration-1000 ease-in-out origin-right flex ${curtainState === 'open' ? 'translate-x-[85%] scale-x-50' : 'translate-x-0'}`}
-          style={{ backgroundImage: 'repeating-linear-gradient(90deg, #e5e5e5 0px, #d4d4d4 10px, #e5e5e5 20px)' }}
-        >
-        </div>
-      </div>
-
-      <div className="flex flex-col md:flex-row gap-6 w-full max-w-md">
-        {/* Card Hiển thị Cảm biến */}
-        <div className="flex-1 bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl shadow-2xl flex flex-col items-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-500 to-orange-400"></div>
-          <Sun className="w-8 h-8 text-yellow-400 mb-2 opacity-80" />
-          <h2 className="text-sm text-neutral-400 mb-2">Cảm biến Môi trường</h2>
-          <div className="text-xl md:text-2xl text-center font-bold tracking-tight text-white drop-shadow-md">
-            {(() => {
-              const val = parseInt(ldrValue, 10);
-              if (isNaN(val)) return ldrValue;
-              if (val > 2500) return "☀️ Trời Sáng chói (Đóng rèm)";
-              if (val < 1000) return "🌙 Trời Tối mát (Mở rèm)";
-              return "⛅ Ánh sáng vừa phải";
-            })()}
+        <div className="mb-8 relative z-10">
+          <div className="flex justify-between items-end mb-3">
+            <span className="text-slate-400 font-medium">Lượng thức ăn trong thùng</span>
+            <span className="text-2xl font-bold text-orange-400">{foodLevel}%</span>
           </div>
-          <div className="text-xs text-neutral-500 mt-2">Chỉ số LDR gốc: {ldrValue}</div>
-        </div>
-
-        {/* Cụm Cài Đặt & Nút Bấm */}
-        <div className="flex flex-col gap-3 flex-1">
-          {/* Toggle Switch */}
-          <div 
-            onClick={toggleMode}
-            className={`cursor-pointer rounded-2xl p-4 flex items-center justify-between transition-all border shadow-lg ${isAuto ? 'bg-sky-500/20 border-sky-400/50 shadow-sky-500/20' : 'bg-neutral-800/50 border-neutral-700'} backdrop-blur-xl`}
-          >
-            <div className="flex flex-col">
-              <span className={`font-bold text-lg ${isAuto ? 'text-sky-300' : 'text-neutral-300'}`}>
-                {isAuto ? "TỰ ĐỘNG (AUTO)" : "THỦ CÔNG (MANUAL)"}
-              </span>
-              <span className="text-xs text-neutral-400">
-                {isAuto ? "Rèm đóng/mở theo LDR" : "Bấm nút để điều khiển"}
-              </span>
+          
+          <div className="w-full bg-slate-700 h-10 rounded-full overflow-hidden border-2 border-slate-600 shadow-inner">
+            <div 
+              className={`h-full transition-all duration-1000 ease-out flex items-center justify-end pr-3 ${
+                foodLevel > 50 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
+                foodLevel > 20 ? 'bg-gradient-to-r from-yellow-500 to-orange-400' :
+                'bg-gradient-to-r from-red-500 to-rose-400'
+              }`}
+              style={{ width: `${foodLevel}%` }}
+            >
+              {foodLevel > 15 && <span className="text-xs font-bold text-white/90 drop-shadow-md">Còn lại</span>}
             </div>
-            {isAuto ? (
-              <ToggleRight className="w-10 h-10 text-sky-400 transition-all scale-110" />
-            ) : (
-              <ToggleLeft className="w-10 h-10 text-neutral-500 transition-all" />
-            )}
           </div>
-          <button
-            onClick={() => controlCurtain("open")}
-            disabled={loading !== null || curtainState === "open"}
-            className="flex-1 group relative overflow-hidden rounded-2xl bg-white/5 border border-white/10 p-4 flex items-center justify-center gap-3 transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading === "open" ? (
-              <Loader2 className="w-5 h-5 text-white animate-spin" />
-            ) : (
-              <Maximize2 className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
-            )}
-            <span className="font-semibold">Mở rèm</span>
-          </button>
+          {foodLevel <= 20 && (
+            <p className="text-rose-400 text-sm mt-3 animate-pulse text-left flex items-center gap-2">
+              <span>⚠️</span> Sắp hết thức ăn, vui lòng nạp thêm!
+            </p>
+          )}
+        </div>
 
-          <button
-            onClick={() => controlCurtain("close")}
-            disabled={loading !== null || curtainState === "close"}
-            className="flex-1 group relative overflow-hidden rounded-2xl bg-white/5 border border-white/10 p-4 flex items-center justify-center gap-3 transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading === "close" ? (
-              <Loader2 className="w-5 h-5 text-white animate-spin" />
-            ) : (
-              <Minimize2 className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform" />
-            )}
-            <span className="font-semibold">Đóng rèm</span>
-          </button>
+        <button
+          onClick={handleFeed}
+          disabled={loading || foodLevel === 0}
+          className={`relative z-10 w-full py-5 rounded-2xl font-bold text-xl transition-all shadow-lg ${
+            loading || foodLevel === 0 
+            ? "bg-slate-700 text-slate-400 shadow-none cursor-not-allowed border border-slate-600" 
+            : "bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 active:translate-y-0 active:scale-95"
+          }`}
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Đang nhả hạt...
+            </span>
+          ) : foodLevel === 0 ? "Hết thức ăn!" : "CHO ĂN NGAY 🦴"}
+        </button>
+
+        <div className="mt-8 pt-6 border-t border-slate-700/50 relative z-10">
+          <p className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-2">Trạng thái hệ thống</p>
+          <div className="inline-block bg-slate-900/50 px-4 py-2 rounded-lg text-sm text-slate-300 font-mono">
+            {status}
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

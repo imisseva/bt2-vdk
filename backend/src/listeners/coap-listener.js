@@ -1,57 +1,37 @@
 const coap = require('coap');
 const state = require('../utils/state');
 
-let lastLdrValue = -1; // Lưu giá trị số để chống nhiễu
-
-const listen = (io) => { // Nhận đối tượng io từ app.js
+const listen = (io) => {
     const server = coap.createServer();
 
     server.on('request', (req, res) => {
-        const path = req.url.split('?')[0]; 
+        const path = req.url.split('?')[0].replace(/^\//, ''); 
         res.setOption('Content-Format', 'text/plain');
 
-        if (path === '/sensor' || path === 'sensor') {
+        if (path === 'sensor') { // Nhận dữ liệu khoảng cách từ cảm biến siêu âm
             req.on('data', (chunk) => {
-                const dataStr = chunk.toString();
-                
-                // Trích xuất con số từ chuỗi "Gia tri LDR: 1234"
-                const match = dataStr.match(/\d+/);
-                if (match) {
-                    const currentVal = parseInt(match[0], 10);
-                    // Lọc Spam thông minh: Chống nhiễu phần cứng (biến thiên < 50 đơn vị thì bỏ qua)
-                    if (Math.abs(currentVal - lastLdrValue) > 50) {
-                        console.log(`[CoAP Server] Dữ liệu cảm biến mới: ${dataStr}`);
-                        lastLdrValue = currentVal;
-                    }
-                }
-                
-                // PHÁT TRỰC TIẾP DỮ LIỆU LÊN FRONTEND QUA WEBSOCKET
-                if (io) {
-                    io.emit('sensor_data', dataStr);
-                }
+                const distance = parseInt(chunk.toString());
+                // Giả sử thùng cao 20cm, tính % thức ăn
+                // (Bạn có thể tự chỉnh lại maxLevel nếu thùng của bạn cao hơn/thấp hơn)
+                const maxLevel = 20; 
+                let percent = Math.round(((maxLevel - distance) / maxLevel) * 100);
+                percent = Math.max(0, Math.min(100, percent)); // Giới hạn 0-100%
+
+                state.setFoodLevel(percent);
+                if (io) io.emit('food_level', percent);
+                console.log(`[CoAP] Lượng thức ăn còn lại: ${percent}%`);
             });
             res.end('ACK');
         } 
-        else if (path === '/command') {
+        else if (path === 'command') {
             const cmd = state.getCommand();
-            if (cmd) {
-                if (cmd === 'auto' || cmd === 'manual') {
-                    console.log(`[CoAP Server] Đã điều hướng ESP sang chế độ: ${cmd.toUpperCase()}`);
-                } else {
-                    console.log(`[CoAP Server] Trả lệnh thao tác rèm cho ESP: ${cmd.toUpperCase()}`);
-                }
-                res.end(cmd);
-            } else {
-                res.end('none');
-            }
+            res.end(cmd || 'none');
         } 
-        else if (path === '/status' || path === 'status') {
+        else if (path === 'status') {
             req.on('data', (chunk) => {
-                const statusStr = chunk.toString();
-                console.log(`[CoAP Server] Trạng thái rèm thực tế: ${statusStr}`);
-                if (io) {
-                    io.emit('curtain_status', statusStr); // Phát tín hiệu để Frontend tắt Loading
-                }
+                const status = chunk.toString(); // 'fed' hoặc 'error'
+                if (io) io.emit('feed_status', status);
+                console.log(`[CoAP] Trạng thái thiết bị: ${status}`);
             });
             res.end('ACK');
         }
@@ -61,7 +41,7 @@ const listen = (io) => { // Nhận đối tượng io từ app.js
     });
 
     server.listen(5683, '0.0.0.0', () => {
-        console.log('CoAP Listener đang chạy trên cổng 5683 (UDP) IP 0.0.0.0');
+        console.log('CoAP Listener cho Máy cho ăn chạy trên cổng 5683 (UDP) IP 0.0.0.0');
     });
 };
 

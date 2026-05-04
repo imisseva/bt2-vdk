@@ -1,10 +1,10 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const http = require('http'); // Thêm http module
-const { Server } = require('socket.io'); // Thêm socket.io
+const http = require('http'); 
+const { Server } = require('socket.io'); 
 const coapListener = require('./listeners/coap-listener');
-const curtainRoutes = require('./routes/curtain-routes');
+const feederRoutes = require('./routes/feeder-routes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -19,13 +19,13 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
-    console.log('[Socket] Một người dùng vừa truy cập trang web!');
+    console.log('[Socket] Một người dùng vừa truy cập trang quản lý máy cho ăn!');
 });
 
-app.use('/api/curtain', curtainRoutes);
+app.use('/api/feeder', feederRoutes);
 
 app.get('/', (req, res) => {
-    res.send(`Backend rèm cửa đã sẵn sàng trên cổng ${PORT}!`);
+    res.send(`Backend Smart Pet Feeder đã sẵn sàng trên cổng ${PORT}!`);
 });
 
 // Chạy CoAP Server và truyền `io` vào để nó có thể phát dữ liệu
