@@ -47,17 +47,15 @@ void rotateGate(bool open) {
     writeStep(0, 0, 0, 0);
 }
 
+bool isFeeding = false;
+const int FULL_THRESHOLD = 5; // Khay đầy khi khoảng cách < 5cm
+
 void processFeeding() {
-    Serial.println(">> Đang mở cửa nhả hạt...");
-    rotateGate(true);
+    if (isFeeding) return; // Nếu đang cho ăn rồi thì không nhận lệnh mới
     
-    delay(2000); // Đợi 2 giây cho hạt rơi
-    
-    Serial.println(">> Đang đóng cửa...");
-    rotateGate(false);
-    
-    Serial.println(">> Hoàn thành!");
-    coap.put(backendIP, 5683, "status", "fed");
+    Serial.println(">> Nhận lệnh: Bắt đầu mở cửa nhả hạt...");
+    rotateGate(true); // Mở cửa
+    isFeeding = true;
 }
 
 void callback_response(CoapPacket &packet, IPAddress ip, int port) {
@@ -98,26 +96,45 @@ void setup() {
 void loop() {
     coap.loop();
     
+    // 1. Logic kiểm tra khay đầy khi đang cho ăn
+    if (isFeeding) {
+        long dist = getDistance();
+        Serial.print(">> Đang cho ăn - Khoảng cách khay: ");
+        Serial.print(dist);
+        Serial.println(" cm");
+
+        if (dist > 0 && dist <= FULL_THRESHOLD) {
+            Serial.println(">> Khay đã đầy! Đang đóng cửa...");
+            rotateGate(false); // Đóng cửa
+            isFeeding = false;
+            
+            // Thông báo cho Backend là đã xong
+            coap.put(backendIP, 5683, "status", "fed");
+            Serial.println(">> Hoàn thành!");
+        }
+        delay(200); // Đọc cảm biến nhanh hơn khi đang cho ăn để ngắt kịp thời
+    }
+
+    // 2. Logic gửi dữ liệu sensor định kỳ lên Backend (để hiển thị % trên web)
     static unsigned long lastSensor = 0;
-    if (millis() - lastSensor > 2000) { // Giảm xuống 2 giây để test cho nhanh
+    if (millis() - lastSensor > 2000 && !isFeeding) { 
         lastSensor = millis();
         long dist = getDistance();
         
-        Serial.print(">> Khoảng cách đo được: ");
+        Serial.print(">> Khoảng cách khay hiện tại: ");
         Serial.print(dist);
         Serial.println(" cm");
 
         if (dist > 0 && dist < 400) {
             String dStr = String(dist);
             coap.put(backendIP, 5683, "sensor", dStr.c_str());
-        } else {
-            Serial.println("!! Cảnh báo: Khoảng cách không hợp lệ (kiểm tra dây Echo/Trig)");
         }
     }
 
+    // 3. Logic hỏi lệnh từ Backend
     static unsigned long lastCmd = 0;
-    if (millis() - lastCmd > 1000) {
+    if (millis() - lastCmd > 1000 && !isFeeding) {
         lastCmd = millis();
         coap.get(backendIP, 5683, "command");
     }
-}
+}
