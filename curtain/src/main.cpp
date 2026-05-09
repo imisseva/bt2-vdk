@@ -1,93 +1,114 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <coap-simple.h>
+#include "HX711.h"
+#include "RTClib.h"
 
 // 1. Cấu hình WiFi
-const char* ssid     = "HIEU";
-const char* password = "12345678";
-IPAddress backendIP(192, 168, 137, 1); 
+const char* ssid     = "Sam Sum";
+const char* password = "24082003";
+IPAddress backendIP(192, 168, 8, 102); 
 
 WiFiUDP udp;
 Coap coap(udp);
 
 // 2. Chân kết nối cho ULN2003 (Động cơ 28BYJ-48)
-#define IN1 5  // D1
-#define IN2 4  // D2
-#define IN3 0  // D3
-#define IN4 2  // D4
+// Tương thích I2C, RTC dùng D1(SCL) D2(SDA). 
+#define STEP_IN1 0   // D3
+#define STEP_IN2 2   // D4
+#define STEP_IN3 13  // D7
+#define STEP_IN4 15  // D8
 
-// Chân Siêu âm
-#define TRIG_PIN 14 // D5
-#define ECHO_PIN 12 // D6
+// Chân Loadcell & PIR
+#define LOADCELL_DOUT 14 // D5
+#define LOADCELL_SCK 12  // D6
+#define PIR_PIN 16       // D0
 
-// Ma trận bước (Half-step 8 bước để quay mượt hơn)
+// 3. Khởi tạo đối tượng
+HX711 scale;
+RTC_DS1307 rtc;
+
+// Biến trạng thái
+float calibration_factor = 420.0;
+int scheduledHour = 7;
+int scheduledMinute = 30;
+int targetWeight = 10;
+bool hasFedToday = false;
+
+// Ma trận bước
 int steps[8][4] = {
   {1,0,0,0}, {1,1,0,0}, {0,1,0,0}, {0,1,1,0},
   {0,0,1,0}, {0,0,1,1}, {0,0,0,1}, {1,0,0,1}
 };
 
 void writeStep(int s1, int s2, int s3, int s4) {
-  digitalWrite(IN1, s1); digitalWrite(IN2, s2);
-  digitalWrite(IN3, s3); digitalWrite(IN4, s4);
+  digitalWrite(STEP_IN1, s1); digitalWrite(STEP_IN2, s2);
+  digitalWrite(STEP_IN3, s3); digitalWrite(STEP_IN4, s4);
 }
 
-// Hàm xoay cửa (open=true: mở, open=false: đóng)
 void rotateGate(bool open) {
-    // 28BYJ-48 cần ~4096 bước cho 1 vòng 360 độ.
-    // Xoay 90 độ cần ~1024 bước (tương đương 128 lần lặp của chu kỳ 8 bước)
-    for (int i = 0; i < 128; i++) {
+    // 28BYJ-48 quay 180 độ cần ~2048 bước (256 lần chu kỳ 8 bước)
+    for (int i = 0; i < 256; i++) {
         for (int j = 0; j < 8; j++) {
             int stepIdx = open ? j : (7 - j);
             writeStep(steps[stepIdx][0], steps[stepIdx][1], steps[stepIdx][2], steps[stepIdx][3]);
-            delayMicroseconds(1000); // Tốc độ quay
+            delayMicroseconds(1000); 
         }
         yield();
     }
-    // Sau khi quay xong phải ngắt điện các cuộn dây để tránh nóng driver/động cơ
     writeStep(0, 0, 0, 0);
-}
-
-bool isFeeding = false;
-const int FULL_THRESHOLD = 5; // Khay đầy khi khoảng cách < 5cm
-
-void processFeeding() {
-    if (isFeeding) return; // Nếu đang cho ăn rồi thì không nhận lệnh mới
-    
-    Serial.println(">> Nhận lệnh: Bắt đầu mở cửa nhả hạt...");
-    rotateGate(true); // Mở cửa
-    isFeeding = true;
 }
 
 void callback_response(CoapPacket &packet, IPAddress ip, int port) {
     char p[packet.payloadlen + 1];
     memcpy(p, packet.payload, packet.payloadlen);
     p[packet.payloadlen] = '\0';
-    String cmd = String(p);
+    String payload = String(p);
 
-    if (cmd == "feed") {
-        processFeeding();
+    // Xử lý gói tin schedule: "HH:MM:TARGET"
+    if (payload.indexOf(':') > 0 && payload.indexOf(':', payload.indexOf(':') + 1) > 0) {
+        int firstColon = payload.indexOf(':');
+        int secondColon = payload.indexOf(':', firstColon + 1);
+        
+        scheduledHour = payload.substring(0, firstColon).toInt();
+        scheduledMinute = payload.substring(firstColon + 1, secondColon).toInt();
+        targetWeight = payload.substring(secondColon + 1).toInt();
+        Serial.println(">> Đã cập nhật lịch: " + payload);
+    } else if (payload == "feed") {
+        // Hỗ trợ lệnh feed thủ công
+        rotateGate(true);
+        delay(2000);
+        rotateGate(false);
+        coap.put(backendIP, 5683, "status", "fed_success");
     }
-}
-
-long getDistance() {
-    digitalWrite(TRIG_PIN, LOW); delayMicroseconds(2);
-    digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
-    digitalWrite(TRIG_PIN, LOW);
-    long duration = pulseIn(ECHO_PIN, HIGH);
-    return duration * 0.034 / 2;
 }
 
 void setup() {
     Serial.begin(115200);
     
-    pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
-    pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
-    pinMode(TRIG_PIN, OUTPUT); pinMode(ECHO_PIN, INPUT);
+    pinMode(STEP_IN1, OUTPUT); pinMode(STEP_IN2, OUTPUT);
+    pinMode(STEP_IN3, OUTPUT); pinMode(STEP_IN4, OUTPUT);
+    pinMode(PIR_PIN, INPUT);
+
+    scale.begin(LOADCELL_DOUT, LOADCELL_SCK);
+    scale.set_scale(calibration_factor);
+    scale.tare();
+
+    if (!rtc.begin()) { 
+        Serial.println("Không tìm thấy module RTC"); 
+    } else {
+        if (!rtc.isrunning()) {
+            Serial.println("RTC chưa chạy, cài đặt giờ tự động!");
+            rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+        }
+    }
 
     WiFi.begin(ssid, password);
     Serial.print("\nConnecting WiFi");
     while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
     Serial.println("\nWiFi Connected!");
+    Serial.print("ESP IP Address: ");
+    Serial.println(WiFi.localIP());
 
     coap.response(callback_response);
     coap.start();
@@ -96,45 +117,62 @@ void setup() {
 void loop() {
     coap.loop();
     
-    // 1. Logic kiểm tra khay đầy khi đang cho ăn
-    if (isFeeding) {
-        long dist = getDistance();
-        Serial.print(">> Đang cho ăn - Khoảng cách khay: ");
-        Serial.print(dist);
-        Serial.println(" cm");
+    DateTime now = rtc.now();
+    
+    // 1. Tính toán khung giờ
+    long nowInMinutes = now.hour() * 60 + now.minute();
+    long scheduledInMinutes = scheduledHour * 60 + scheduledMinute;
+    
+    bool inWindow = (nowInMinutes >= scheduledInMinutes - 10) && 
+                    (nowInMinutes <= scheduledInMinutes + 60);
 
-        if (dist > 0 && dist <= FULL_THRESHOLD) {
-            Serial.println(">> Khay đã đầy! Đang đóng cửa...");
-            rotateGate(false); // Đóng cửa
-            isFeeding = false;
+    // 2. Logic nghiệp vụ
+    if (inWindow && !hasFedToday) {
+        if (digitalRead(PIR_PIN) == HIGH) {
+            Serial.println(">> Phát hiện mèo! Đang kiểm tra bát ăn...");
             
-            // Thông báo cho Backend là đã xong
-            coap.put(backendIP, 5683, "status", "fed");
-            Serial.println(">> Hoàn thành!");
+            float currentWeight = scale.get_units(5);
+            if (currentWeight < targetWeight) {
+                Serial.println(">> Thiếu thức ăn. Đang mở cửa...");
+                rotateGate(true); // Mở 180 độ
+                
+                unsigned long feedStartTime = millis();
+                while (scale.get_units(5) < targetWeight) {
+                    if (millis() - feedStartTime > 20000) {
+                        Serial.println(">> Timeout chờ hạt rơi!");
+                        break;
+                    }
+                    delay(100);
+                }
+                
+                rotateGate(false); // Đóng 180 độ
+                Serial.println(">> Đã xong!");
+            }
+            hasFedToday = true;
+            coap.put(backendIP, 5683, "status", "fed_success");
         }
-        delay(200); // Đọc cảm biến nhanh hơn khi đang cho ăn để ngắt kịp thời
     }
 
-    // 2. Logic gửi dữ liệu sensor định kỳ lên Backend (để hiển thị % trên web)
+    if (!inWindow) { hasFedToday = false; }
+
+    // 3. Gửi dữ liệu định kỳ
     static unsigned long lastSensor = 0;
-    if (millis() - lastSensor > 2000 && !isFeeding) { 
+    if (millis() - lastSensor > 2000) { 
         lastSensor = millis();
-        long dist = getDistance();
         
-        Serial.print(">> Khoảng cách khay hiện tại: ");
-        Serial.print(dist);
-        Serial.println(" cm");
-
-        if (dist > 0 && dist < 400) {
-            String dStr = String(dist);
-            coap.put(backendIP, 5683, "sensor", dStr.c_str());
-        }
+        // Đo cân nặng
+        float weight = scale.get_units(5);
+        if (weight < 0) weight = 0;
+        
+        String dStr = "W:" + String(weight, 1);
+        coap.put(backendIP, 5683, "sensor", dStr.c_str());
     }
 
-    // 3. Logic hỏi lệnh từ Backend
-    static unsigned long lastCmd = 0;
-    if (millis() - lastCmd > 1000 && !isFeeding) {
-        lastCmd = millis();
-        coap.get(backendIP, 5683, "command");
+    // 4. Lấy lịch định kỳ
+    static unsigned long lastSched = 0;
+    if (millis() - lastSched > 10000) { // Mỗi 10s lấy lại lịch
+        lastSched = millis();
+        coap.get(backendIP, 5683, "schedule");
+        coap.get(backendIP, 5683, "command"); // Vẫn lấy command thủ công
     }
-}
+}

@@ -1,14 +1,24 @@
 let pendingCommand = null;
-let lastFoodLevel = 100;
+let bowlWeight = 0;
+let schedule = { hour: 7, minute: 30, targetWeight: 10 };
 
 const setCommand = (cmd) => { pendingCommand = cmd; };
 const getCommand = () => {
     const cmd = pendingCommand;
-    pendingCommand = null; // Xóa lệnh sau khi lấy
+    pendingCommand = null;
     return cmd;
 };
 
-const setFoodLevel = (level) => { lastFoodLevel = level; };
-const getFoodLevel = () => lastFoodLevel;
+const setBowlWeight = (weight) => { bowlWeight = weight; };
+const getBowlWeight = () => bowlWeight;
 
-module.exports = { setCommand, getCommand, setFoodLevel, getFoodLevel };
+const setSchedule = (h, m, target) => { 
+    schedule = { hour: h, minute: m, targetWeight: target }; 
+};
+const getSchedule = () => schedule;
+
+module.exports = { 
+    setCommand, getCommand, 
+    setBowlWeight, getBowlWeight,
+    setSchedule, getSchedule
+};

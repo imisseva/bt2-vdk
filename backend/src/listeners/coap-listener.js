@@ -8,23 +8,30 @@ const listen = (io) => {
         const path = req.url.split('?')[0].replace(/^\//, ''); 
         res.setOption('Content-Format', 'text/plain');
 
-        if (path === 'sensor') { // Nhận dữ liệu khoảng cách từ cảm biến siêu âm
+        if (path === 'sensor') { 
             req.on('data', (chunk) => {
-                const distance = parseInt(chunk.toString());
-                const maxLevel = 20; 
-                let percent = Math.round(((maxLevel - distance) / maxLevel) * 100);
-                percent = Math.max(0, Math.min(100, percent)); 
-
-                state.setFoodLevel(percent);
-                if (io) io.emit('food_level', percent);
-                console.log(`[CoAP] Nhận dữ liệu Sensor: ${distance}cm -> ${percent}%`);
+                const dataStr = chunk.toString();
+                // Format: W:5.5
+                if (dataStr.startsWith('W:')) {
+                    const weight = parseFloat(dataStr.substring(2));
+                    state.setBowlWeight(weight);
+                    if (io) io.emit('bowl_weight', weight);
+                }
+                console.log(`[CoAP] Nhận dữ liệu Sensor: ${dataStr}`);
             });
             res.end('ACK');
         } 
         else if (path === 'command') {
             const cmd = state.getCommand();
+            if (cmd) console.log(`[CoAP] ESP lấy lệnh: ${cmd}`);
             res.end(cmd || 'none');
         } 
+        else if (path === 'schedule') {
+            const sched = state.getSchedule();
+            const schedStr = `${sched.hour}:${sched.minute}:${sched.targetWeight}`;
+            console.log(`[CoAP] ESP lấy lịch trình: ${schedStr}`);
+            res.end(schedStr);
+        }
         else if (path === 'status') {
             req.on('data', (chunk) => {
                 const status = chunk.toString(); 
