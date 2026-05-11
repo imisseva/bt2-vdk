@@ -1,16 +1,17 @@
 const state = require('../utils/state');
 
 const controlFeeder = async (req, res) => {
-    const { action } = req.body; 
+    const { action, amount } = req.body; 
 
     if (action !== 'feed') {
         return res.status(400).json({ success: false, error: 'Lệnh không hợp lệ' });
     }
 
-    // Lưu lệnh vào bộ nhớ tạm chờ ESP lên lấy (Polling)
-    state.setCommand(action);
-    console.log(`[HTTP] Nhận lệnh từ Web: ${action}`);
-    res.status(200).json({ success: true, message: `Đã lưu lệnh [${action}], chờ ESP lấy...` });
+    // Gửi lệnh kèm số gam nếu có (ví dụ: "feed:15")
+    const cmd = amount ? `${action}:${amount}` : action;
+    state.setCommand(cmd);
+    console.log(`[HTTP] Nhận lệnh từ Web: ${cmd}`);
+    res.status(200).json({ success: true, message: `Đã lưu lệnh [${cmd}], chờ ESP lấy...` });
 };
 
 const updateSchedule = async (req, res) => {

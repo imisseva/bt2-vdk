@@ -13,6 +13,7 @@ export default function PetFeeder() {
   // States for Schedule
   const [scheduleTime, setScheduleTime] = useState("07:30");
   const [targetWeight, setTargetWeight] = useState(10);
+  const [manualAmount, setManualAmount] = useState(10); // Gram cho ăn thủ công
   const [scheduleStatus, setScheduleStatus] = useState("");
 
   useEffect(() => {
@@ -23,7 +24,8 @@ export default function PetFeeder() {
 
     // Lắng nghe trạng thái khi thiết bị phản hồi
     socket.on("feed_status", (data) => {
-      if (data === "fed" || data === "fed_success") {
+      // Dùng includes để xử lý trường hợp mảng char C++ có dính ký tự rỗng \0 ở cuối
+      if (String(data).includes("fed") || String(data).includes("fed_success")) {
         setStatus("✔️ Đã cho ăn thành công!");
         setLoading(false);
         // Sau 3 giây đưa về trạng thái sẵn sàng
@@ -45,7 +47,7 @@ export default function PetFeeder() {
       await fetch("http://localhost:3001/api/feeder/control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "feed" }),
+        body: JSON.stringify({ action: "feed", amount: manualAmount }),
       });
     } catch (error) {
       console.error("Lỗi khi gọi API:", error);
@@ -133,25 +135,29 @@ export default function PetFeeder() {
             {scheduleStatus && <p className="text-xs text-center mt-2 text-emerald-400">{scheduleStatus}</p>}
         </div>
 
-        <button
-          onClick={handleFeed}
-          disabled={loading}
-          className={`relative z-10 w-full py-4 rounded-2xl font-bold text-xl transition-all shadow-lg ${
-            loading 
-            ? "bg-slate-700 text-slate-400 shadow-none cursor-not-allowed border border-slate-600" 
-            : "bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 active:translate-y-0 active:scale-95"
-          }`}
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Đang nhả hạt...
-            </span>
-          ) : "CHO ĂN NGAY 🦴"}
-        </button>
+        {/* Cho ăn ngay thủ công */}
+        <div className="flex gap-2 mb-4 relative z-10">
+            <div className="flex-[2]">
+                <input 
+                    type="number" 
+                    value={manualAmount}
+                    onChange={(e) => setManualAmount(Number(e.target.value))}
+                    placeholder="Số gam..."
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl p-3 text-white focus:outline-none focus:border-rose-500"
+                />
+            </div>
+            <button
+                onClick={handleFeed}
+                disabled={loading}
+                className={`flex-[3] py-3 rounded-xl font-bold transition-all shadow-lg ${
+                    loading 
+                    ? "bg-slate-700 text-slate-400 cursor-not-allowed" 
+                    : "bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-400 hover:to-rose-400 text-white active:scale-95"
+                }`}
+            >
+                {loading ? "Đang nhả..." : "CHO ĂN NGAY 🦴"}
+            </button>
+        </div>
 
         <div className="mt-6 pt-4 border-t border-slate-700/50 relative z-10">
           <p className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-2">Trạng thái hệ thống</p>
