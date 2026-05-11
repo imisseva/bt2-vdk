@@ -19,15 +19,9 @@ const int LOADCELL_DOUT_PIN = D2;// Giữ nguyên
 const int TRIGGER_PIN = D3;      // Ra lệnh cho Uno
 const int PIR_PIN = D7;          // Cảm biến chuyển động
 
-// Khai báo chân I2C mới cho DS1307
-const int I2C_SDA_PIN = D6;
-const int I2C_SCL_PIN = D5;
-
 HX711 scale;
 
 // --- BIẾN LOGIC ---
-bool hasFedMorning = false;
-bool hasFedEvening = false;
 int targetWeight = 10; // Thêm biến toàn cục để App có thể đổi số gam
 int scheduledHour = 7;
 int scheduledMinute = 30;
@@ -133,20 +127,13 @@ void loop() {
       // Nằm trong khung giờ cho ăn và CHƯA CHO ĂN
       if (weight < targetWeight) {
         Serial.println("PIR: Thu cung o gan, DUNG GIO, va bat rong! -> CHO AN");
-        feedPet(targetWeight);     
+        fee1dPet(targetWeight);     
         hasFedScheduled = true; // Đánh dấu đã cho ăn xong khung giờ này
       } else {
         Serial.println("PIR: Phat hien thu cung, DUNG GIO, nhung bat VAN DAY thuc an.");
       }
     }
     delay(5000);   // Nghỉ 5 giây để tránh nhiễu
-  }
-
-  // --- Tự động cho ăn đúng giờ hẹn (Nếu chưa cho ăn) ---
-  if (currentHour == scheduledHour && currentMinute == scheduledMinute && !hasFedScheduled) {
-    Serial.println("LOGIC: Dung gio hen -> Tu dong cho an...");
-    feedPet(targetWeight);
-    hasFedScheduled = true;
   }
 
   // Reset cờ hasFedScheduled khi ra ngoài khung giờ hẹn để chuẩn bị cho lần sau
@@ -157,20 +144,6 @@ void loop() {
   // In log ra màn hình
   Serial.print(currentHour); Serial.print(":"); Serial.print(currentMinute);
   Serial.print(" | Can nang: "); Serial.print(weight); Serial.println("g");
-
-  // --- Logic Cho ăn (7h sáng và 18h tối) ---
-  if (currentHour == 7 && currentMinute == 0 && !hasFedMorning) {
-    feedPet(targetWeight);
-    hasFedMorning = true;
-  }
-  if (currentHour == 18 && currentMinute == 0 && !hasFedEvening) {
-    feedPet(targetWeight);
-    hasFedEvening = true;
-  }
-  if (currentHour == 0) {
-    hasFedMorning = false;
-    hasFedEvening = false;
-  }
   
   // Gửi cân nặng lên App mỗi 2 giây
   static unsigned long lastSensor = 0;
